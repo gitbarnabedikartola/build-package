@@ -10,7 +10,7 @@ inputs:
     required: false
   branch:
     description: 'branch to build against'
-    default: unstable
+    default: stable
     required: false
   custom-repo:
     description: 'custom repo'
@@ -31,7 +31,16 @@ inputs:
   ssh-key:
     description: 'boxit user ssh private key'
     required: false
-
+  extrarepo:
+    description: 'extra repository to buld package'
+    required: false
+  gitbranch:
+    description: 'extra repository to buld package'
+    required: false
+  extracommand:
+    description: 'extra command to buld package'
+    required: false
+    
 runs:
   using: "composite"
   steps:
@@ -53,6 +62,7 @@ runs:
         python3-pip
         sudo pip3 install meson
         sudo pip3 install ninja
+        
     - name: install pacman
       shell: bash
       env:
@@ -87,6 +97,10 @@ runs:
         sudo sed -i '/\[core\]/{h;s/.*/Server = https:\/\/repo.biglinux.com.br\/update-stable\/$arch/;p;x;}' /etc/pacman.conf
         sudo sed -i '/\[core\]/{h;s/.*//;p;x;}' /etc/pacman.conf
         echo '
+        [biglinux-testing]
+        SigLevel = PackageRequired
+        Server = https://repo.biglinux.com.br/testing/$arch' | sudo tee -a /etc/pacman.conf
+        echo '
         [biglinux-stable]
         SigLevel = PackageRequired
         Server = https://repo.biglinux.com.br/stable/$arch' | sudo tee -a /etc/pacman.conf
@@ -111,18 +125,36 @@ runs:
           sudo install -m0644 archlinux-revoked /usr/share/pacman/keyrings/
         popd
         sudo rm -rf archlinux-keyring
-        sudo pacman-key --init
-        sudo pacman-key -r 45EC44879815E2A6
-        sudo pacman-key --lsign-key 45EC44879815E2A6
-        sudo pacman-key --populate archlinux manjaro
+        sudo git clone --depth 1 https://github.com/biglinux/biglinux-keyring.git
+        pushd biglinux-keyring
+          sudo install -m0644 biglinux.gpg /usr/share/pacman/keyrings/
+          sudo install -m0644 biglinux-trusted /usr/share/pacman/keyrings/
+          sudo install -m0644 biglinux-trusted /usr/share/pacman/keyrings/
+        popd
+        sudo rm -rf biglinux-keyring
+                
+        #sudo pacman-key --init
+        #sudo pacman-key -r 45EC44879815E2A6
+        #sudo pacman-key --lsign-key 45EC44879815E2A6
+        #sudo pacman-key --populate archlinux manjaro biglinux
+        
+    - name: pull keys
+      shell: bash
+      run: |
+        sudo git clone https://github.com/biglinux/biglinux-key.git
+        sudo mkdir -p /etc/pacman.d/gnupg/
+        sudo cp -r biglinux-key/usr/share/pacman/keyrings/* /etc/pacman.d/gnupg/
+        sudo rm -r biglinux-key
         
     - name: install manjaro-chrootbuild
       shell: bash
+      env:
+        EXTRAREPO: ${{ inputs.extrarepo }}
       run: |
         sudo git clone --depth 1 https://gitlab.manjaro.org/tools/development-tools/manjaro-chrootbuild
         pushd manjaro-chrootbuild
         sudo ./install.sh
-        echo 'PACKAGER="Bruno Goncalves <bigbruno@gmail.com>"' | sudo tee -a /etc/makepkg.conf > /dev/null
+        echo 'PACKAGER="BigLinux Package Build <bigbruno@gmail.com>"' | sudo tee -a /etc/makepkg.conf > /dev/null
         popd
         sudo rm -rf manjaro-chrootbuild
         
@@ -132,43 +164,74 @@ runs:
         sudo sed -i '/\[core\]/{h;s/.*/Server = https:\/\/repo.biglinux.com.br\/update-stable\/$arch/;p;x;}' /etc/chrootbuild/pacman.conf.x86_64
         sudo sed -i '/\[core\]/{h;s/.*//;p;x;}' /etc/chrootbuild/pacman.conf.x86_64
         echo '
+        [biglinux-testing]
+        SigLevel = PackageRequired
+        Server = https://repo.biglinux.com.br/testing/$arch' | sudo tee -a /etc/chrootbuild/pacman.conf.x86_64
+        echo '
         [biglinux-stable]
         SigLevel = PackageRequired
         Server = https://repo.biglinux.com.br/stable/$arch' | sudo tee -a /etc/chrootbuild/pacman.conf.x86_64
+        
+        sudo sed -i '/LocalFileSigLevel/{p;s/.*/ParallelDownloads = 8/;}' /etc/chrootbuild/pacman.conf.x86_64
+        sudo sed -i 's|https://repo.manjaro.org/repo|https://mnvoip.mm.fcix.net/manjaro|' /usr/lib/manjaro-chrootbuild/util.sh
         sudo sed -i '/-Syy/s/-Syy/-Syy git /' /usr/lib/manjaro-chrootbuild/util-chroot.sh
         
-    ## Tmate ##
-    #- name: Setup tmate session
-    #  uses: mxschmitt/action-tmate@v3
+    # # Tmate ##
+    # - name: Setup tmate session
+    #   uses: mxschmitt/action-tmate@v3
         
     - name: build package
-      shell: bash -O extglob {0}
+      shell: bash
       run: |
+        # "build package"
         git clone ${{ github.event.client_payload.url }}.git
         gitfolder=$(find -type f -name PKGBUILD | sed 's/PKGBUILD//')
         cd $gitfolder
-
+        
+        #for i in $(find -type f -name PKGBUILD | sed 's/PKGBUILD//'); do
+        #cd $i
+        if [ -n "$(echo ${{ github.event.client_payload.url }} | grep https://github.com/biglinux/)" ]; then
+        git checkout ${{ inputs.gitbranch }}
+        sed -i '/source=/s/\.git"/\.git#branch=${{ inputs.gitbranch }}"/' PKGBUILD
+        fi
+        
+        ${{ github.event.client_payload.command }}
+        ${{ inputs.extracommand }}
+        
+        echo "branch_build=${{ inputs.branch }}"
+        
         build_opt=("-H" "-p ." "-b ${{ inputs.branch }}")
         [[ ! -z "${{ inputs.custom-repo }}" ]] && build_opt+=("-k ${{ inputs.custom-repo }}")
         [[ "${{ inputs.multilib }}" == "true" ]] && build_opt+=("-m")
         echo "cmd=chrootbuild ${build_opt[@]}"
         sudo chrootbuild ${build_opt[@]}
         
-        echo "Trocar : por ."
-        for i in *.zst *.sig *.tar; do
-        test -e $i && if [ -n "$(ls $i | grep :)" ]; then mv $i $(echo $i | sed 's/:/./'); fi; done
-        exit 0
+        #done
+        
+    - name: Rename Package
+      shell: bash -O extglob {0}
+      run: | 
+        # "Rename Package"
+        #for i in $(find -type f -name PKGBUILD | sed 's/PKGBUILD//'); do
+        #cd $i
+        gitfolder=$(find -type f -name PKGBUILD | sed 's/PKGBUILD//')
+        cd $gitfolder
+        for i in *.zst; do if [ -n "$(ls $i | grep :)" ]; then mv $i $(echo $i | sed 's/:/-/'); fi; done
+        #done
         
     - name: sign package
       shell: bash -O extglob {0}
       run: |
-        echo "Assinar Pacote"
+        # "Assinar Pacote"
         cat <(echo -e "${{ inputs.gpg-key }}") | gpg --batch --import &>/dev/null
+        #for i in $(find -type f -name PKGBUILD | sed 's/PKGBUILD//'); do
+        #cd $i
         gitfolder=$(find -type f -name PKGBUILD | sed 's/PKGBUILD//')
         cd $gitfolder
         for p in $(find $PWD -maxdepth 1 -regex '.*\.pkg\.tar\.\(xz\|zst\)'); do
           gpg --pinentry-mode loopback --passphrase "${{ inputs.gpg-passphrase }}" --detach-sign ${p}
         done
+        #done
         
     ## Tmate ##
     #- name: Setup tmate session
@@ -177,21 +240,28 @@ runs:
     - name: CheckSum
       shell: bash -O extglob {0}
       run: |
-        echo "Checksum"
+        # "Checksum"
+        #for i in $(find -type f -name PKGBUILD | sed 's/PKGBUILD//'); do
+        #cd $i
         gitfolder=$(find -type f -name PKGBUILD | sed 's/PKGBUILD//')
         cd $gitfolder
         echo '#!/bin/bash
-        file=$(find -type f -iname "*.zst" | cut -d "/" -f2)
-        for i in *.zst *.sig; do test -e $i && md5sum $i >> "$file"".md5"; done
+        #file=$(find -type f -iname "*.zst" | cut -d "/" -f2)
+        #for i in *.zst *.sig; do test -e $i && md5sum $i >> "$file.md5"; done
+        for i in $(ls *.zst); do md5sum $i >> $i.md5; done
+        for i in $(ls *.sig | sed 's/.sig//'); do md5sum $i.sig >> $i.md5; done
         exit 0' > md5.sh
         bash md5.sh
-   
-   
-       
+        #done
+        
     #- name: prepare assets transaction
       #shell: bash -O extglob {0}
       #run: |
-        #source /var/lib/chrootbuild/build/${{ inputs.package }}/PKGBUILD
+        #if [ -n "$(echo ${{ github.event.client_payload.url }} | grep https://github.com/biglinux/)" ]; then
+        #pkgbuildfolder=$(find -type f -name PKGBUILD | sed 's/PKGBUILD//')
+        #cd $pkgbuildfolder
+        ##source /var/lib/chrootbuild/build/${{ inputs.package }}/PKGBUILD
+        #source PKGBUILD
         #tag=${pkgver}-${pkgrel}
         #for p in ${pkgname[@]}; do
           #name=$(find . -name ${p}-${tag}*.zst)
@@ -205,3 +275,11 @@ runs:
           #tar -czvf ${file}.tar ./${file}*.zst ./${file}*.sig ./${btf}
         #done
         #echo "TAG=${tag}" >>$GITHUB_ENV
+        
+        #release=${pkgname}}-${{ env.TAG }}
+        #echo ${{ github.token }} | gh auth login --with-token
+        #gh release create ${release} --title ${release} --repo ${{ github.repository }} --notes "automated release" || echo "release already exists"
+        #GITHUB_LINK=https://github.com/${GITHUB_REPOSITORY}/releases/download/${release}
+        #gh release upload ${release} --repo ${GITHUB_REPOSITORY} --clobber ./*.zst ./*.sig ./*.tar
+        
+        #fi

@@ -1,13 +1,11 @@
-name: Build Package
+name: Build XanMod
 
 # Controls when the workflow will run
-on:
-  repository_dispatch:
-    types:
-      - biglinux/*
-      - AUR/*
-      - xivastudio/*
-  
+# on:
+  # repository_dispatch:
+    # types:
+      # - linux-xanmod*/*
+      
   # Allows you to run this workflow manually from the Actions tab
   #workflow_dispatch:
 
@@ -23,37 +21,69 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v3
       
-#       - name: Telegram Alert Start
-#         shell: bash
-#         run: |
-#           curl -X POST -H 'Content-Type: application/json' -d '{"chat_id": "${{ secrets.CHAT_ID }}", "text": "Criando ${{ github.event.action }} do repositório ${{ github.event.client_payload.branch }} enviado por ${{ github.actor }}", "disable_notification": true}' ${{ secrets.MESSAGE_BOT_KEY }}
-      
       - name: echo PayLoads
         run: |
           echo "url: ${{ github.event.client_payload.url }}"
           echo "branch: ${{ github.event.client_payload.branch }}"
-          echo "extrarepo: ${{ github.event.client_payload.extrarepo }}"
-          echo "branch_build: ${{ github.event.client_payload.branch_build }}"
+          echo "xanmod: ${{ github.event.client_payload.xanmod }}"
+          echo "xanmod version: ${{ github.event.client_payload.kver }}"
+          echo "version rel: ${{ github.event.client_payload.xanver }}"
           
-          if [ -z "${{ github.event.client_payload.branch_build }}" ];then
-            echo "branch_build=stable" >> $GITHUB_ENV
-          else
-            echo "branch_build=${{ github.event.client_payload.branch_build }}" >> $GITHUB_ENV
-          fi
-          
-          echo "new branch_build: ${{ env.branch_build }}"
-          
+#       - name: Extra Command
+#         shell: bash
+#         run: |
+#             module=$(find /usr/lib/modules -type d -iname "${{ github.event.client_payload.kver }}*xanmod*" | rev | cut -d "/" -f1 | rev) && sed -i "s/_linuxprefix=.*/_linuxprefix=linux-xanmod/;s/_extramodules=.*/_extramodules=${module}/;s/_kernver=.*/_kernver=${module}/" PKGBUILD
+#             
+#              && 
+#             
+#             echo "module=$(find /usr/lib/modules -type d -iname "${{ github.event.client_payload.kver }}*xanmod*" | rev | cut -d "/" -f1 | rev)"
+#             
+#             sed -i "/_linuxprefix/{h;s/.*/module=$(find \/usr\/lib\/modules -type d -iname "${{ github.event.client_payload.kver }}*xanmod*" | rev | cut -d "\/" -f1 | rev)/;p;x;}" PKGBUILD
+#             
+#             sed -i 's/_linuxprefix=.*/_linuxprefix=linux-xanmod/;s/_extramodules=.*/_extramodules=${module}/;s/_kernver=.*/_kernver=${module}/' PKGBUILD
+#             
+#             
+#             find="find \/usr\/lib\/modules -type d -iname "${{ github.event.client_payload.kver }}*xanmod*" | rev | cut -d "'"\/"'" -f1 | rev" && 
+#             
+#             sed -i '1i\' -e "module=$find" PKGBUILD
+#             sed -i "/_linuxprefix/{h;s/.*/module=$find/;p;x;}" PKGBUILD
+#             
+#             o _extramodules precisa conter o endereço da pasta dos modulodos da versão do kernel
+#             payload .kver tem o numero da versão do kernel
+#             precisa fazer um find 6.0.7*xanmod* para encontrar o modulo, mas isso dentro do pkgbuild pq precisa estar com o kernel instalado
+#             
+#             precisa escrever dentro do pkgbuild a string:
+#             
+#             module=$(find /usr/lib/modules -type d -iname "${{ github.event.client_payload.kver }}*xanmod*" | rev | cut -d "/" -f1 | rev)
+#             
+#             interpretando o payload, então antes de mandar escrever, tem que pegar o payload e inputar
+#             
+#             sed  '/_linuxprefix/{h;s/.*/module=$('"$find"')/;p;x;}' PKGBUILD
+#             isso escre em varias linhas, precisa escrever uma linha só
+#             
+#             find="find \/usr\/lib\/modules -type d -iname "${{ github.event.client_payload.kver }}*xanmod*" | rev | cut -d "'"\/"'" -f1 | rev"
+#             && 
+#             sed -i '1 imodule=$('"$find"')' PKGBUILD
+#             && 
+
+
+            # find="find \/usr\/lib\/modules -type d -iname "${{ github.event.client_payload.kver }}*xanmod*" | rev | cut -d "'"\/"'" -f1 | rev" && sed -i 's/_linuxprefix=.*/_linuxprefix='"${{ github.event.client_payload.xanmod }}"'/;s/_extramodules=.*/_extramodules=$('"$find"')/;s/_kernver=.*/_kernver=$('"$find"')/' PKGBUILD
+            
+            
+            
       - name: Makepkg Build and Check
         id: makepkg
         # You may pin to the exact commit or the version.
-        uses:  gitbarnabedikartola/build-package@main
+        uses: BigLinux-Package-Build/build-package@main
         with:
           package: pkgbuild
-          branch: ${{ env.branch_build }}
+          branch: stable
           gitbranch: ${{ github.event.client_payload.branch }}
           gpg-key: ${{ secrets.GPG_PRIVATE_KEY }}
           gpg-passphrase: ${{ secrets.PASSPHRASE }}
           extrarepo: ${{ github.event.client_payload.extrarepo }}
+          extracommand: find="find \/usr\/lib\/modules -type d -iname "${{ github.event.client_payload.kver }}*xanmod*" | rev | cut -d "'"\/"'" -f1 | rev" && sed -i 's/_linuxprefix=.*/_linuxprefix='"${{ github.event.client_payload.xanmod }}"'/;s/_extramodules=.*/_extramodules=$('"$find"')/;s/_kernver=.*/_kernver=$('"$find"')/' PKGBUILD && sed -i 's/<\/usr\/lib\/modules\/${_extraver}\/version/'"$find"'/;s/pkgrel=.*/pkgrel='"${{ github.event.client_payload.xanver }}"'/' PKGBUILD && sed -i 's/EXTRAMODULES=.*/EXTRAMODULES=$('"$find"')/;s/depmod.*/depmod $('"$find"')/' *.install && cat PKGBUILD
+          #&& sed -i '/pkgrel=/{p;s/.*/epoch=1/;}' PKGBUILD
           
       # # Tmate ##
       # - name: Setup tmate session
@@ -71,10 +101,6 @@ jobs:
           release=${pkgname}-${pkgver}-${pkgrel}
           
           if [ -n "$(echo ${{ github.event.client_payload.url }} | grep https://github.com/biglinux/)" ]; then 
-            echo ${{ secrets.TOKEN_RELEASE }} | gh auth login --with-token
-            # token=${{ secrets.TOKEN_RELEASE }}
-            repo=$(echo ${{ github.event.client_payload.url }} | sed 's|https://github.com/||')
-          elif [ -n "$(echo ${{ github.event.client_payload.url }} | grep https://github.com/xivastudio/)" ]; then 
             echo ${{ secrets.TOKEN_RELEASE }} | gh auth login --with-token
             # token=${{ secrets.TOKEN_RELEASE }}
             repo=$(echo ${{ github.event.client_payload.url }} | sed 's|https://github.com/||')

@@ -158,6 +158,8 @@ runs:
         popd
         sudo rm -rf manjaro-chrootbuild
         
+        source <(curl -s https://gitlab.manjaro.org/packages/core/manjaro-release/-/raw/master/lsb-release)
+        
         #add biglinux repository
         sudo sed -i '/\[core\]/{h;s/.*/\[biglinux-update-stable\]/;p;x;}' /etc/chrootbuild/pacman.conf.x86_64
         sudo sed -i '/\[core\]/{h;s/.*/SigLevel = PackageRequired/;p;x;}' /etc/chrootbuild/pacman.conf.x86_64
@@ -173,7 +175,11 @@ runs:
         Server = https://repo.biglinux.com.br/stable/$arch' | sudo tee -a /etc/chrootbuild/pacman.conf.x86_64
         
         sudo sed -i '/LocalFileSigLevel/{p;s/.*/ParallelDownloads = 8/;}' /etc/chrootbuild/pacman.conf.x86_64
+        
         sudo sed -i 's|https://repo.manjaro.org/repo|https://mnvoip.mm.fcix.net/manjaro|' /usr/lib/manjaro-chrootbuild/util.sh
+        #sudo sed -i 's|https://repo.manjaro.org/repo|https://mirror2.sandyriver.net/pub/manjaro|' /usr/lib/manjaro-chrootbuild/util.sh
+        # sudo sed -i 's|https://repo.manjaro.org/repo|https://forksystems.mm.fcix.net/manjaro|' /usr/lib/manjaro-chrootbuild/util.sh
+        # sudo sed -i 's|https://repo.manjaro.org/repo|https://ridgewireless.mm.fcix.net/manjaro|' /usr/lib/manjaro-chrootbuild/util.sh
         sudo sed -i '/-Syy/s/-Syy/-Syy git /' /usr/lib/manjaro-chrootbuild/util-chroot.sh
         
     # # Tmate ##
